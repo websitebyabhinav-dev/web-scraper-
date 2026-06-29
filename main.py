@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 import requests
 from bs4 import BeautifulSoup
@@ -7,6 +8,15 @@ import zipfile
 import json
 
 app = FastAPI()
+
+# 🔥 FIX CORS (this is why "Failed to fetch" happens)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 def home():
@@ -36,6 +46,7 @@ async def scrap(request: Request):
         }
 
         zip_buffer = io.BytesIO()
+
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as z:
             z.writestr("data.json", json.dumps(output, indent=4))
 
@@ -44,7 +55,9 @@ async def scrap(request: Request):
         return StreamingResponse(
             zip_buffer,
             media_type="application/zip",
-            headers={"Content-Disposition": "attachment; filename=datavenator.zip"}
+            headers={
+                "Content-Disposition": "attachment; filename=datavenator.zip"
+            }
         )
 
     except Exception as e:
