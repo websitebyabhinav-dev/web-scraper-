@@ -1,68 +1,51 @@
 from fastapi import FastAPI, Request
-from fastapi.responses import Response
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse, JSONResponse
 import requests
 from bs4 import BeautifulSoup
 import io
 import zipfile
+import json
 
 app = FastAPI()
 
-# FIX: allow frontend to call backend (VERY IMPORTANT)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 @app.get("/")
 def home():
-    return {"status": "server running"}
+    return {"status": "alive"}
 
 @app.post("/scrap")
 async def scrap(request: Request):
-    data = await request.json()
-    url = data.get("url")
-
-    if not url:
-        return {"error": "No URL provided"}
-
     try:
-        # STEP 1: fetch website
-        headers = {
-            "User-Agent": "Mozilla/5.0"
-        }
-        res = requests.get(url, headers=headers, timeout=10)
+        data = await request.json()
+        url = data.get("url")
 
-        if res.status_code != 200:
-            return {"error": f"Failed to fetch site: {res.status_code}"}
+        if not url:
+            return JSONResponse({"error": "URL missing"}, status_code=400)
 
-        # STEP 2: parse HTML
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(url, headers=headers, timeout=15)
+
         soup = BeautifulSoup(res.text, "html.parser")
 
-        title = soup.title.string if soup.title else "No Title"
-        links = [a.get("href") for a in soup.find_all("a") if a.get("href")]
+        title = soup.title.text.strip() if soup.title else "No Title"
+        links = [a.get("href") for a in soup.find_all("a", href=True)][:50]
 
-        # STEP 3: create ZIP in memory
+        output = {
+            "url": url,
+            "title": title,
+            "links": links
+        }
+
         zip_buffer = io.BytesIO()
-
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-            zip_file.writestr("title.txt", title)
-            zip_file.writestr("links.txt", "\n".join(str(x) for x in links[:50]))
-            zip_file.writestr("source.html", res.text)
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("data.json", json.dumps(output, indent=4))
 
         zip_buffer.seek(0)
 
-        # STEP 4: return ZIP
-        return Response(
-            content=zip_buffer.read(),
+        return StreamingResponse(
+            zip_buffer,
             media_type="application/zip",
-            headers={
-                "Content-Disposition": "attachment; filename=datavenator.zip"
-            }
+            headers={"Content-Disposition": "attachment; filename=datavenator.zip"}
         )
 
     except Exception as e:
-        return {"error": str(e)}
+        return JSONResponse({"error": str(e)}, status_code=500)
