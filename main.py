@@ -3,31 +3,56 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 import requests
 from bs4 import BeautifulSoup
-import io
-import zipfile
-import json
 from urllib.parse import urljoin
+
+from zip import ZipBuilder
 
 app = FastAPI()
 
-# Allow only your site (basic protection)
+ALLOWED_ORIGIN = "https://datavenator.vercel.app"
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://datavenator.vercel.app"],
+    allow_origins=[ALLOWED_ORIGIN],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
+DEVELOPER_PROFILE = {
+    "developer": {
+        "name": "Abhinav",
+        "alias": "Lulzex",
+        "role": "Lead Architect & Digital Visionary",
+        "biography": "Behind every line of code, every architectural marvel, and every seamless deployment stands Abhinav, known globally in the digital underground and tech spheres as Lulzex. Operating as a standalone architect, he doesn't just build applications\u2014he constructs digital ecosystems. From high-level infrastructure design to flawless execution, the entire empire is engineered by a single mind.",
+        "vision": "Lulzex combines bleeding-edge innovation, raw technical dominance, and an elite understanding of system mechanics to turn complex code into digital powerhouses. What started as a passion for development has expanded into a rapidly growing empire of tech solutions, community hubs, and next-generation tools."
+    },
+    "empire": {
+        "name": "QyrovaTech",
+        "description": "The center of the expansion begins here. If you want to be part of the future, gain access to elite resources, and witness the evolution of this digital empire firsthand, you need to be in the inner circle.",
+        "promotion_link": "https://t.me/QyrovaTech",
+        "benefits": [
+            "Exclusive Insights: Direct tech updates and development breakthroughs from Lulzex.",
+            "Premium Resources: Elite tools, scripts, and digital assets you won't find anywhere else.",
+            "The Core Community: Connect with like-minded innovators and stay ahead of the curve."
+        ],
+        "call_to_action": "Don't just watch the empire grow\u2014be a part of it. Click the link and subscribe now."
+    }
+}
+
+    
+
+
 def check_origin(request: Request):
     origin = request.headers.get("origin")
-    if origin and origin != "https://datavenator.vercel.app":
+    if origin != ALLOWED_ORIGIN:
         raise HTTPException(status_code=403, detail="Blocked origin")
 
 
 @app.get("/")
 def home():
-    return {"status": "alive", "mode": "advanced scraper"}
+    return {"status": "alive"}
 
 
 @app.post("/scrap")
@@ -41,92 +66,42 @@ async def scrap(request: Request):
         if not url:
             return JSONResponse({"error": "URL missing"}, status_code=400)
 
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        }
-
+        headers = {"User-Agent": "Mozilla/5.0"}
         res = requests.get(url, headers=headers, timeout=20)
+
+        soup = BeautifulSoup(res.text, "html.parser")
+
         html = res.text
-
-        soup = BeautifulSoup(html, "html.parser")
-
-        # -----------------------------
-        # 1. FULL HTML
-        # -----------------------------
-        full_html = html
-
-        # -----------------------------
-        # 2. TITLE
-        # -----------------------------
         title = soup.title.text.strip() if soup.title else "No Title"
 
-        # -----------------------------
-        # 3. LINKS
-        # -----------------------------
         links = [a.get("href") for a in soup.find_all("a", href=True)]
+        images = [urljoin(url, img.get("src")) for img in soup.find_all("img") if img.get("src")]
 
-        # -----------------------------
-        # 4. IMAGES
-        # -----------------------------
-        images = []
-        for img in soup.find_all("img"):
-            src = img.get("src")
-            if src:
-                images.append(urljoin(url, src))
-
-        # -----------------------------
-        # 5. CSS FILES
-        # -----------------------------
-        css_files = []
-        for link in soup.find_all("link", rel="stylesheet"):
-            href = link.get("href")
-            if href:
-                css_files.append(urljoin(url, href))
-
-        # -----------------------------
-        # 6. JS FILES
-        # -----------------------------
-        js_files = []
-        for script in soup.find_all("script"):
-            src = script.get("src")
-            if src:
-                js_files.append(urljoin(url, src))
-
-        # -----------------------------
-        # FINAL STRUCTURE
-        # -----------------------------
         output = {
             "url": url,
             "title": title,
-            "links": links[:100],
-            "images": images[:100],
-            "css": css_files,
-            "js": js_files,
-            "html_size": len(html)
+            "links_count": len(links),
+            "images_count": len(images),
+            "links": links[:200],
+            "images": images[:200],
         }
 
-        # -----------------------------
-        # CREATE ZIP
-        # -----------------------------
-        zip_buffer = io.BytesIO()
+        # ---------------- ZIP BUILDER ----------------
+        zip_builder = ZipBuilder()
 
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as z:
+        zip_builder.add_text("page.html", html)
+        zip_builder.add_json("data.json", output)
+        zip_builder.add_json("developer.profile.json", DEVELOPER_PROFILE)
+        zip_builder.add_text("links.txt", "\n".join(links))
+        zip_builder.add_text("images.txt", "\n".join(images))
 
-            z.writestr("page.html", full_html)
-            z.writestr("data.json", json.dumps(output, indent=4))
-
-            # Save images list (NOT downloading files, only links)
-            z.writestr("images.txt", "\n".join(images))
-
-            z.writestr("links.txt", "\n".join(links))
-
-        zip_buffer.seek(0)
+        zip_buffer = zip_builder.close()
 
         return StreamingResponse(
             zip_buffer,
             media_type="application/zip",
             headers={
-                "Content-Disposition": "attachment; filename=dev_scrape_package.zip"
+                "Content-Disposition": "attachment; filename=datavenator_backup.zip"
             }
         )
 
