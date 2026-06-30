@@ -1,48 +1,45 @@
 import zipfile
-import os
 import io
+import json
 
+class ZipBuilder:
+    def __init__(self):
+        """
+        Initializes an isolated, in-memory ZIP archive stream pipeline.
+        Avoids reading/writing files to disk for fast API streaming delivery.
+        """
+        self.buffer = io.BytesIO()
+        self.zipf = zipfile.ZipFile(self.buffer, "w", zipfile.ZIP_DEFLATED)
 
-# -----------------------------
-# MODE 1: Folder → ZIP (DISK)
-# -----------------------------
-def create_zip_from_folder(folder_path: str):
-    zip_path = folder_path + ".zip"
+    def add_text(self, filename: str, content: str):
+        """
+        Writes structured layout text assets (HTML, CSS, JS, TXT) 
+        directly into the archive.
+        """
+        self.zipf.writestr(filename, content)
 
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for root, _, files in os.walk(folder_path):
-            for file in files:
-                file_path = os.path.join(root, file)
-                arcname = os.path.relpath(file_path, folder_path)
-                zipf.write(file_path, arcname)
+    def add_json(self, filename: str, data: dict):
+        """
+        Serializes a Python dictionary to a pretty-printed JSON string 
+        and saves it into the archive structure.
+        """
+        json_content = json.dumps(data, indent=4, ensure_ascii=False)
+        self.zipf.writestr(filename, json_content)
 
-    return zip_path
+    def add_bytes(self, filename: str, content: bytes):
+        """
+        Writes raw binary asset data streams (PNG, JPG, WEBP, ICO, etc.) 
+        directly into the archive layer. This prevents encoding or 
+        string conversion corruption from breaking downloaded images.
+        """
+        self.zipf.writestr(filename, content)
 
-
-# -----------------------------
-# MODE 2: Memory → ZIP (API FAST)
-# -----------------------------
-def create_zip_in_memory(files: dict):
-    """
-    files format:
-    {
-        "page.html": "<html>...</html>",
-        "data.json": "{...}",
-        "developer.profile.json": "{...}"
-    }
-    """
-
-    buffer = io.BytesIO()
-
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for filename, content in files.items():
-
-            # if content is dict → convert to JSON
-            if isinstance(content, dict):
-                import json
-                content = json.dumps(content, indent=4)
-
-            zipf.writestr(filename, content)
-
-    buffer.seek(0)
-    return buffer
+    def close(self) -> io.BytesIO:
+        """
+        Finalizes the ZIP archive write headers, seals the wrapper container, 
+        and resets the inner pointer to byte zero for immediate FastAPI 
+        StreamingResponse execution.
+        """
+        self.zipf.close()
+        self.buffer.seek(0)
+        return self.buffer
