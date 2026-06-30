@@ -5,7 +5,7 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 
-from zip import ZipBuilder
+from zipper import ZipBuilder
 
 app = FastAPI()
 
