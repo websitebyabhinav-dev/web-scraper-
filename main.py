@@ -9,14 +9,18 @@ from zipper import ZipBuilder
 
 app = FastAPI()
 
-# PUBLIC API MODE
+
+# only your frontend allowed
+ALLOWED_ORIGIN = "https://datavenator.vercel.app"
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=[ALLOWED_ORIGIN],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 # developer file injected into every ZIP
