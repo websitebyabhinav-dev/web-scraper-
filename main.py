@@ -9,6 +9,7 @@ from zipper import ZipBuilder
 
 app = FastAPI()
 
+# PUBLIC API MODE
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,6 +17,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
 # developer file injected into every ZIP
 DEVELOPER_PROFILE = {
     "developer": {
